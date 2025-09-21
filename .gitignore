@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Exclude sensitive environment variables
+.env
+
+# Exclude log files and the logs directory
+logs/
+*.log

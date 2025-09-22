@@ -1,29 +1,31 @@
-from pymongo import MongoClient 
+import pymongo
+from pymongo import MongoClient
 from datetime import datetime
 import os
 from dotenv import load_dotenv
 import logging
 from typing import List, Dict
+from bson.objectid import ObjectId
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 class MongoDBClient:
-    def __init__(self):
-        self.connection_string = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
-        logger.info(f"Connecting to MongoDB: {self.connection_string}")
+    def __init__(self, mongo_uri, db_name, collection_name):
+        # 1. Correctly initializes a single client and collection using the arguments
+        self.client = MongoClient(mongo_uri)
+        self.db = self.client[db_name]
+        self.collection = self.db[collection_name]
         
+        # This part ensures that the database connection is actually working
         try:
-            self.client = MongoClient(self.connection_string)
-            self.db = self.client["task_planner_db"]
-            self.plans_collection = self.db["plans"]
-            self.workflows_collection = self.db["workflows"]
-            logger.info("MongoDB connection established successfully")
+            self.client.admin.command('ping')
+            logger.info("MongoDB connection established successfully.")
         except Exception as e:
             logger.error(f"MongoDB connection failed: {e}")
             raise
-    
+
     def save_plan(self, goal: str, plan: Dict, workflow_history: List[Dict] = None) -> str:
         logger.info(f"Saving plan to database: {goal[:50]}...")
         document = {
@@ -34,42 +36,23 @@ class MongoDBClient:
             "status": "completed"
         }
         try:
-            result = self.plans_collection.insert_one(document)
+            # 2. Saves the document to the correct collection
+            result = self.collection.insert_one(document)
             logger.info(f"Plan saved with ID: {result.inserted_id}")
-            
-            # Also save to workflows collection for tracking
-            workflow_doc = {
-                "plan_id": result.inserted_id,
-                "goal": goal,
-                "history": workflow_history or [],
-                "timestamp": datetime.now()
-            }
-            self.workflows_collection.insert_one(workflow_doc)
-            
             return str(result.inserted_id)
         except Exception as e:
             logger.error(f"Failed to save plan: {e}")
             raise
     
-    def save_workflow_state(self, plan_id: str, state: str, metadata: Dict = None):
-        """Save workflow state for monitoring"""
-        document = {
-            "plan_id": plan_id,
-            "state": state,
-            "metadata": metadata or {},
-            "timestamp": datetime.now()
-        }
-        self.workflows_collection.insert_one(document)
-    
-    def get_workflow_history(self, plan_id: str) -> List[Dict]:
-        """Get workflow history for a specific plan"""
-        from bson import ObjectId
-        try:
-            workflow = self.workflows_collection.find_one({"plan_id": ObjectId(plan_id)})
-            return workflow.get("history", []) if workflow else []
-        except Exception as e:
-            logger.error(f"Failed to get workflow history: {e}")
-            return []
     def get_all_plans(self):
-        return list(self.collection.find())
+        # 3. Retrieves documents from the same collection
+        plans = self.collection.find().sort("timestamp", pymongo.DESCENDING)
+        return [{**plan, '_id': str(plan['_id'])} for plan in plans]
     
+    def delete_plan(self, plan_id):
+        try:
+            result = self.collection.delete_one({"_id": ObjectId(plan_id)})
+            logger.info(f"Deleted {result.deleted_count} plan(s) with ID: {plan_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete plan: {e}")
+            raise

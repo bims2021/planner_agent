@@ -41,10 +41,10 @@ class WebSearchTool:
             logger.debug(f"SerpAPI request: {params}")
             response = requests.get(self.base_url, params=params, timeout=10)
             response.raise_for_status()  # This will raise an HTTPError if the response status is 4xx or 5xx
-            results = response.json()
+            results = response.json()  # Parse JSON response
             
             # Extract organic results
-            organic_results = results.get("organic_results", [])[:num_results]
+            organic_results = results.get("organic_results", [])[:num_results]  # Limit to num_results
             simplified_results = []
             
             for result in organic_results:
